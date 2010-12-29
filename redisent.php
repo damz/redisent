@@ -9,10 +9,15 @@
  */
 
 /**
+ * Throw protocol exceptions.
+ */
+class RedisentProtocolException extends Exception {}
+
+
+/**
  * Wraps native Redis errors in friendlier PHP exceptions
  */
-class RedisentException extends Exception {
-}
+class RedisentException extends Exception {}
 
 /**
  * Redisent, a Redis interface for the modest among us
@@ -47,11 +52,11 @@ class Redisent {
   function __call($name, $args) {
     /* Build the Redis protocol command */
 
-    // Start by prepending the arguments with the command.
-    array_unshift($args, $name);
-
     // Pass the number of arguments.
-    $command = '*' . count($args) . Redisent::CRLF;
+    $command = '*' . (count($args) + 1) . Redisent::CRLF;
+
+    // Start with the command name.
+    $command .= '$' . strlen($name) . Redisent::CRLF . $name . Redisent::CRLF;
 
     foreach ($args as $arg) {
       $command .= '$' . strlen($arg) . Redisent::CRLF . $arg . Redisent::CRLF;
@@ -61,63 +66,67 @@ class Redisent {
     fwrite($this->__sock, $command);
 
     /* Parse the response based on the reply identifier */
-    $reply = trim(fgets($this->__sock, 512));
-    switch (substr($reply, 0, 1)) {
+    $type = fgetc($this->__sock);
+    $response = fgets($this->__sock, 512);
+    switch ($type) {
       /* Error reply */
       case '-':
-        throw new RedisentException(substr(trim($reply), 4));
+        throw new RedisentException($response);
         break;
       /* Inline reply */
       case '+':
-        $response = substr(trim($reply), 1);
         break;
       /* Bulk reply */
       case '$':
-        if ($reply == '$-1') {
+        $size = $response;
+
+        if ($size == -1) {
           $response = null;
           break;
         }
+        $response = '';
         $read = 0;
-        $size = (int) substr($reply, 1);
         do {
-          $block_size = ($size - $read) > 1024 ? 1024 : ($size - $read);
-          $response = fread($this->__sock, $block_size);
+          $block_size = min($size - $read, 1024);
+          $response .= fread($this->__sock, $block_size);
           $read += $block_size;
         } while ($read < $size);
+
         fread($this->__sock, 2); /* discard Redisent::CRLF */
         break;
       /* Multi-bulk reply */
       case '*':
-        $count = (int) substr($reply, 1);
-        if ($count == '-1') {
+        $count = $response;
+        if ($count == -1) {
           return null;
         }
-        $response = array();
+        $responses = array();
         for ($i = 0; $i < $count; $i++) {
-          $bulk_head = trim(fgets($this->__sock, 512));
-          $size = (int) substr($bulk_head, 1);
-          if ($size == '-1') {
-            $response[] = null;
+          fgetc($this->__sock); /* discard $ */
+          $size = (int) fgets($this->__sock, 512);
+
+          if ($size == -1) {
+            $responses[] = null;
+            break;
           }
-          else {
-            $read = 0;
-            $block = "";
-            do {
-              $block_size = ($size - $read) > 1024 ? 1024 : ($size - $read);
-              $block .= fread($this->__sock, $block_size);
-              $read += $block_size;
-            } while ($read < $size);
-            fread($this->__sock, 2); /* discard Redisent::CRLF */
-            $response[] = $block;
-          }
+          $response = '';
+          $read = 0;
+          do {
+            $block_size = min($size - $read, 1024);
+            $response .= fread($this->__sock, $block_size);
+            $read += $block_size;
+          } while ($read < $size);
+          $responses[] = $response;
+
+          fread($this->__sock, 2); /* discard Redisent::CRLF */
         }
         break;
       /* Integer reply */
       case ':':
-        $response = substr(trim($reply), 1);
+        $response = (int) $response;
         break;
       default:
-        throw new RedisentException("invalid server response: {$reply}");
+        throw new RedisentProtocolException('Invalid server response');
         break;
     }
     /* Party on */
