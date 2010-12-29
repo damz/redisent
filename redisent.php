@@ -41,7 +41,7 @@ class Redisent {
   function __construct($host, $port = 6379) {
     $this->__sock = fsockopen($host, $port, $errno, $errstr);
     if (!$this->__sock) {
-      throw new Exception("{$errno} - {$errstr}");
+      throw new RedisentProtocolException("Unable to connect to the server: {$errno} - {$errstr}");
     }
   }
 
