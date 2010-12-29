@@ -24,7 +24,7 @@ class RedisentException extends Exception {}
  */
 class Redisent {
 
-  const CRLF = "\x0d\x0a";
+  const CRLF = "\r\n";
 
   /**
    * Socket connection to the Redis server
