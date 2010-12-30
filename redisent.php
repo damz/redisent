@@ -75,10 +75,11 @@ class Redisent {
         break;
       /* Inline reply */
       case '+':
+      $response= substr($response,0,-2);
         break;
       /* Bulk reply */
       case '$':
-        $size = $response;
+        $size = (int)$response;
 
         if ($size == -1) {
           $response = null;
@@ -88,9 +89,9 @@ class Redisent {
         $to_read = $size;
         do {
           $block_size = min($to_read, 4096);
-          $response .= fread($this->__sock, $block_size);
+          if ($size) $response .= fread($this->__sock, $block_size);
           $to_read = $size - strlen($response);
-        } while ($to_read > 0 && !feof($this->__sock));
+        } while ($to_read > 0 && !feof($this->__sock)); // $size can be 0 in case the key is empty (which redis accepts)
 
         fread($this->__sock, 2); /* discard Redisent::CRLF */
         break;
@@ -113,9 +114,9 @@ class Redisent {
           $to_read = $size;
           do {
             $block_size = min($to_read, 4096);
-            $response .= fread($this->__sock, $block_size);
+            if ($block_size) $response .= fread($this->__sock, $block_size); // $size can be 0 
             $to_read = $size - strlen($response);
-          } while ($to_read > 0 && !feof($this->__sock));
+          } while ($to_read > 0  && !feof($this->__sock)); 
 
           $responses[] = $response;
 
@@ -135,4 +136,42 @@ class Redisent {
     return $response;
   }
 
+}
+
+/**
+ * A wrapper class for Redisent allowing for  pre and post treatment 
+ * Mostly: allows hgetall and info to return an associative array
+ *
+ * @package Redisent
+ * @author Ori Pekelman
+ */
+class RedisentWrap extends redisent{
+    function __call($name, $args) {
+        $response = parent::__call($name, $args);
+        $treated_response=null;
+        switch (strtolower($name)){
+            case 'hgetall': // hget all returns a hash
+            foreach ($response as $key => $value){
+                if (($key+2) % 2) $arrval= $value; else $arrkey=$value;
+                if (isset($arrkey) && isset($arrval)) $treated_response[$arrkey]= $arrval;
+                }
+            $response=$treated_response;
+            break;
+            case 'info': // hget all returns text: a CRLF seprated list with ":" separated hash
+            $response=explode(Redisent::CRLF, $response);
+            foreach ($response as $value){
+                if (strpos($value, ":")){
+                    $res= explode(":", $value);
+                    $treated_response[$res[0]]=$res[1];
+                  }
+                }
+                $response=$treated_response;
+            break;
+            default:
+            break;
+        }
+        return $response;
+        
+    }
+    
 }
