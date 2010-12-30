@@ -51,7 +51,7 @@ class redisentTest extends PHPUnit_Framework_TestCase
     public function testBigSet()
     {   
         $key="key";
-        $val= str_pad("",50,"value");
+        $val= str_pad("",50000,"value");
         $resp = $this->object->set($key,$val);
         $this->assertEquals($resp ,"OK");
         $resp = $this->object->get($key);
