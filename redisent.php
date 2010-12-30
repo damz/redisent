@@ -120,6 +120,7 @@ class Redisent {
 
           fread($this->__sock, 2); /* discard Redisent::CRLF */
         }
+        $response = $responses;
         break;
       /* Integer reply */
       case ':':
