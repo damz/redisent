@@ -85,12 +85,12 @@ class Redisent {
           break;
         }
         $response = '';
-        $read = 0;
+        $to_read = $size;
         do {
-          $block_size = min($size - $read, 1024);
+          $block_size = min($to_read, 4096);
           $response .= fread($this->__sock, $block_size);
-          $read += $block_size;
-        } while ($read < $size);
+          $to_read = $size - strlen($response);
+        } while ($to_read > 0 && !feof($this->__sock));
 
         fread($this->__sock, 2); /* discard Redisent::CRLF */
         break;
@@ -110,12 +110,13 @@ class Redisent {
             break;
           }
           $response = '';
-          $read = 0;
+          $to_read = $size;
           do {
-            $block_size = min($size - $read, 1024);
+            $block_size = min($to_read, 4096);
             $response .= fread($this->__sock, $block_size);
-            $read += $block_size;
-          } while ($read < $size);
+            $to_read = $size - strlen($response);
+          } while ($to_read > 0 && !feof($this->__sock));
+
           $responses[] = $response;
 
           fread($this->__sock, 2); /* discard Redisent::CRLF */
