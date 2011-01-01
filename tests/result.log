@@ -1,0 +1,4 @@
+-- Bottom Line for phpredis: Tests completed in 2.979605 seconds in average, with 1.05 mb memory usage
+-- Bottom Line for redisent: Tests completed in 4.457145 seconds in average, with 1.31 mb memory usage
+-- Bottom Line for redisentwrap: Tests completed in 4.892705 seconds in average, with 1.31 mb memory usage
+-- Bottom Line for predis: Tests completed in 11.707525 seconds in average, with 3.15 mb memory usage
