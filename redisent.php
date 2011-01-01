@@ -137,41 +137,89 @@ class Redisent {
   }
 
 }
-
 /**
  * A wrapper class for Redisent allowing for  pre and post treatment 
- * Mostly: allows hgetall and info to return an associative array
+ * Mostly: allows hgetall and info to return an associative array and the api to be phpredis compatible
  *
  * @package Redisent
  * @author Ori Pekelman
  */
 class RedisentWrap extends redisent{
-    function __call($name, $args) {
-        $response = parent::__call($name, $args);
-        $treated_response=null;
-        switch (strtolower($name)){
-            case 'hgetall': // hget all returns a hash
-            foreach ($response as $key => $value){
-                if (($key+2) % 2) $arrval= $value; else $arrkey=$value;
-                if (isset($arrkey) && isset($arrval)) $treated_response[$arrkey]= $arrval;
-                }
-            $response=$treated_response;
-            break;
-            case 'info': // hget all returns text: a CRLF seprated list with ":" separated hash
-            $response=explode(Redisent::CRLF, $response);
-            foreach ($response as $value){
-                if (strpos($value, ":")){
-                    $res= explode(":", $value);
-                    $treated_response[$res[0]]=$res[1];
-                  }
-                }
-                $response=$treated_response;
-            break;
-            default:
-            break;
+
+/**
+ * enable compatability with phpredis
+ *
+ * @var boolean
+ */
+private $phprediscompatible = false;
+/**
+ * methods to rename
+ *
+ * @var array
+ */
+private $aliased_methods = array("delete"=>"del","getkeys"=>"keys");
+/**
+ * Add the possibility to have an API compatible with the phpredis c extesnsion
+ *
+ * @param string $host 
+ * @param string $port 
+ * @param string $phprediscompatible 
+ * @author Ori Pekelman
+ */
+function __construct($host="locahost", $port = 6379, $phprediscompatible = false) {
+    $this->phprediscompatible = $phprediscompatible;
+    return parent::__construct($host, $port);
+
+}
+/**
+ * wrapper to the redisent magic call function to allow for pre processing and post processing
+ *
+ * @param string $name 
+ * @param string $args 
+ * @return void
+ * @author Ori Pekelman
+ */
+function __call($name, $args) {
+    $name =strtolower($name);
+    /* Pre Processing*/	
+	if ($this->phprediscompatible    ){
+    //  methods phpredis chose to rename and not provide aliases for.
+    if  ( array_key_exists($name, $this->aliased_methods)){
+        $name = $this->aliased_methods[$name]; 
         }
-        return $response;
-        
+    // change the sigature of mget
+    if ($name=="mget") {$args=array(implode (" ", $args[0]));}
+  	}
+    /*Post Processing*/
+    $response = parent::__call($name, $args);
+    $treated_response=null;
+    switch ($name){
+        // hget all returns a hash
+        case 'hgetall': 
+        foreach ($response as $key => $value){
+            if (($key+2) % 2) $arrval= $value; else $arrkey = $value;
+            if (isset($arrkey) && isset($arrval)) $treated_response[$arrkey]= $arrval;
+        }
+        $response=$treated_response;
+        break;
+        // hget all returns text: a CRLF seprated list with ":" separated hash
+        case 'info': 
+        $response=explode(Redisent::CRLF, $response);
+        foreach ($response as $value){
+            if (strpos($value, ":")){
+                $res= explode(":", $value);
+                $treated_response[$res[0]] = $res[1];
+            }
+        }
+        $response = $treated_response;
+        break;
+        case 'connect':
+        if  ($this->phprediscompatible) return true;
+        default:
+        break;
     }
-    
+    return $response;
+
+}
+
 }
