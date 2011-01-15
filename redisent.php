@@ -40,6 +40,7 @@ class Redisent {
    */
   function __construct($host, $port = 6379) {
     $this->__sock = fsockopen($host, $port, $errno, $errstr);
+
     if (!$this->__sock) {
       throw new RedisentProtocolException("Unable to connect to the server: {$errno} - {$errstr}");
     }
@@ -50,22 +51,33 @@ class Redisent {
   }
 
   function __call($name, $args) {
-    /* Build the Redis protocol command */
+    // Build the Redis protocol command.
 
-    // Pass the number of arguments.
-    $command = '*' . (count($args) + 1) . Redisent::CRLF;
+    // Get the size of the arguments, if sufficiently small, send all the
+    // arguments in a go. There doesn't seem to be an easy way to play with
+    // TCP_NODELAY in PHP.
+    // $size = isset($args[0]) ? (strlen($args[0]) + (isset($args[1]) ? strlen($args[1]) + (isset($args[2]) ? strlen($args[2]) : 0): 0)) : 0;
+    $size = array_sum(array_map('strlen', $args));
+    if ($size < 1024) {
+      $command = '*' . (count($args) + 1) . Redisent::CRLF . '$' . strlen($name) . Redisent::CRLF . $name . Redisent::CRLF;
+      foreach ($args as $arg) {
+        $command .= '$' . strlen($arg) . Redisent::CRLF . $arg . Redisent::CRLF;
+      }
+      fwrite($this->__sock, $command);
+    }
+    else {
+      // Pass the number of arguments and the command name.
+      fwrite($this->__sock, '*' . (count($args) + 1) . Redisent::CRLF . '$' . strlen($name) . Redisent::CRLF . $name);
 
-    // Start with the command name.
-    $command .= '$' . strlen($name) . Redisent::CRLF . $name . Redisent::CRLF;
-
-    foreach ($args as $arg) {
-      $command .= '$' . strlen($arg) . Redisent::CRLF . $arg . Redisent::CRLF;
+      // Pass the arguments, collapsing the CRLF from the previous call.
+      foreach ($args as $arg) {
+        fwrite($this->__sock, Redisent::CRLF . '$' . strlen($arg) . Redisent::CRLF);
+        fwrite($this->__sock, $arg);
+      }
+      fwrite($this->__sock, Redisent::CRLF);
     }
 
-    /* Open a Redis connection and execute the command */
-    fwrite($this->__sock, $command);
-
-    /* Parse the response based on the reply identifier */
+    // Parse the response based on the reply identifier.
     $type = fgetc($this->__sock);
     $response = fgets($this->__sock, 512);
     switch ($type) {
